@@ -238,7 +238,7 @@ fun MainScreen() {
                 }
             },
             onCancel = {
-                grupo = "90 - PRODUTO ACABADO"
+                grupo = "90 - MATERIAL ACABADO"
                 produto = "AGUARDANDO LEITURA"
                 etiqueta = ""
                 quantidade = "0"

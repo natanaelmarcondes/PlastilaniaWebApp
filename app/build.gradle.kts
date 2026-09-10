@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.example.plastilaniaapp"
 
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.plastilaniaapp"
@@ -57,8 +57,14 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
     implementation(libs.barcode.scanning)
     implementation(libs.guava)
+    
+    // Retrofit
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.gson)
 
     testImplementation(libs.junit)
 
