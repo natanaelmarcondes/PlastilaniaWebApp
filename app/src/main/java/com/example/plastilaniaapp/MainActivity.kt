@@ -70,6 +70,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -175,7 +177,7 @@ fun MainScreen() {
                         val api = ApiService.create()
                         val dataAtual = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                         
-                        val request = MovimentacaoRequest(
+                        val baseRequest = MovimentacaoRequest(
                             empCodigo = "01",
                             mrcCodigo = "01",
                             dataOcorrencia = dataAtual,
@@ -190,18 +192,37 @@ fun MainScreen() {
                             cliFor = 0
                         )
 
-                        val response = api.registrarEntrada(request)
-                        
-                        if (response.isSuccessful) {
-                            Toast.makeText(context, "Operação realizada com sucesso!", Toast.LENGTH_SHORT).show()
-                            // Resetar estados
-                            produto = "AGUARDANDO LEITURA"
-                            prxCodigo = ""
-                            etiqueta = ""
-                            quantidade = "0"
-                            isConfirming = false
+                        if (localOrigem == "01 - MATRIZ" && localDestino == "02 - FILIAL") {
+                            // Chamada 1: toaCodigo 60 (Saída da Matriz)
+                            val resp1 = api.registrarEntrada(baseRequest.copy(toaCodigo = 60, locCodigo = 1))
+                            // Chamada 2: toaCodigo 10 (Entrada na Filial)
+                            val resp2 = api.registrarEntrada(baseRequest.copy(toaCodigo = 10, locCodigo = 2))
+                            
+                            if (resp1.isSuccessful && resp2.isSuccessful) {
+                                Toast.makeText(context, "Movimentação de estoque realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                                isConfirming = false
+                                // Reset
+                                produto = "AGUARDANDO LEITURA"
+                                prxCodigo = ""
+                                etiqueta = ""
+                                quantidade = "0"
+                            } else {
+                                Toast.makeText(context, "Erro em uma das chamadas", Toast.LENGTH_LONG).show()
+                            }
                         } else {
-                            Toast.makeText(context, "Erro: ${response.code()} - ${response.message()}", Toast.LENGTH_LONG).show()
+                            // Chamada Única: toaCodigo 10 (Entrada na Matriz)
+                            val resp = api.registrarEntrada(baseRequest.copy(toaCodigo = 10, locCodigo = 1))
+                            if (resp.isSuccessful) {
+                                Toast.makeText(context, "Movimentação realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                                isConfirming = false
+                                // Reset
+                                produto = "AGUARDANDO LEITURA"
+                                prxCodigo = ""
+                                etiqueta = ""
+                                quantidade = "0"
+                            } else {
+                                Toast.makeText(context, "Erro: ${resp.code()}", Toast.LENGTH_LONG).show()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("API_ERROR", "Erro ao chamar API", e)
@@ -286,6 +307,14 @@ fun MainScreen() {
                     showQuantityDialog = true
                 } else {
                     Toast.makeText(context, "Leia um produto primeiro!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDestinoChange = { novoDestino ->
+                localDestino = novoDestino
+                if (novoDestino.contains("MATRIZ")) {
+                    localOrigem = ""
+                } else {
+                    localOrigem = "01 - MATRIZ"
                 }
             },
             onCancel = {
@@ -481,10 +510,12 @@ fun InventoryFormScreen(
     onScanClick: () -> Unit,
     onEtiquetaChange: (String) -> Unit,
     onQuantityClick: () -> Unit,
+    onDestinoChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    var showDestinoMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -563,7 +594,36 @@ fun InventoryFormScreen(
                 }
 
                 FormFieldRowCompact(Icons.Default.NorthEast, "Orig.", localOrigem, false)
-                FormFieldRowCompact(Icons.Default.SouthEast, "Dest.", localDestino, false)
+                
+                // Destino com Menu
+                Box {
+                    FormFieldRowCompact(
+                        icon = Icons.Default.SouthEast,
+                        label = "Dest.",
+                        value = localDestino,
+                        isDropdown = true,
+                        onClick = { showDestinoMenu = true }
+                    )
+                    DropdownMenu(
+                        expanded = showDestinoMenu,
+                        onDismissRequest = { showDestinoMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("01 - MATRIZ") },
+                            onClick = {
+                                onDestinoChange("01 - MATRIZ")
+                                showDestinoMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("02 - FILIAL") },
+                            onClick = {
+                                onDestinoChange("02 - FILIAL")
+                                showDestinoMenu = false
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -657,7 +717,13 @@ fun IconBoxCompact(icon: ImageVector, label: String) {
 }
 
 @Composable
-fun FormFieldRowCompact(icon: ImageVector, label: String, value: String, isDropdown: Boolean = false) {
+fun FormFieldRowCompact(
+    icon: ImageVector, 
+    label: String, 
+    value: String, 
+    isDropdown: Boolean = false,
+    onClick: (() -> Unit)? = null
+) {
     val isAguardando = value == "AGUARDANDO LEITURA"
     val alpha by if (isAguardando) {
         val infiniteTransition = rememberInfiniteTransition(label = "blink")
@@ -675,7 +741,7 @@ fun FormFieldRowCompact(icon: ImageVector, label: String, value: String, isDropd
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = onClick != null) { onClick?.invoke() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconBoxCompact(icon, label)
@@ -684,6 +750,7 @@ fun FormFieldRowCompact(icon: ImageVector, label: String, value: String, isDropd
             value = value,
             onValueChange = {},
             readOnly = true,
+            enabled = false, // Para permitir o clique no Row
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = 50.dp),
@@ -697,11 +764,9 @@ fun FormFieldRowCompact(icon: ImageVector, label: String, value: String, isDropd
                 color = Color.Black.copy(alpha = alpha)
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = Color(0xFFBDBDBD),
-                unfocusedTextColor = Color.Black.copy(alpha = alpha),
-                focusedTextColor = Color.Black.copy(alpha = alpha),
+                disabledBorderColor = Color(0xFFBDBDBD),
                 disabledTextColor = Color.Black.copy(alpha = alpha),
-                unfocusedContainerColor = Color(0xFFF9F9F9)
+                disabledContainerColor = Color(0xFFF9F9F9)
             )
         )
     }
