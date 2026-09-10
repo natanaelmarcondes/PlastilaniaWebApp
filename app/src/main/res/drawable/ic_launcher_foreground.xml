@@ -1,0 +1,38 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Cube 1 (Top) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,25 l15,8.5 l-15,8.5 l-15,-8.5 z" />
+    <path
+        android:fillColor="#E1F5FE"
+        android:pathData="M39,33.5 l15,8.5 l0,17 l-15,-8.5 z" />
+    <path
+        android:fillColor="#B3E5FC"
+        android:pathData="M54,42 l15,-8.5 l0,17 l-15,8.5 z" />
+
+    <!-- Cube 2 (Bottom Left) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,50 l15,8.5 l-15,8.5 l-15,-8.5 z" />
+    <path
+        android:fillColor="#E1F5FE"
+        android:pathData="M21,58.5 l15,8.5 l0,17 l-15,-8.5 z" />
+    <path
+        android:fillColor="#B3E5FC"
+        android:pathData="M36,67 l15,-8.5 l0,17 l-15,8.5 z" />
+
+    <!-- Cube 3 (Bottom Right) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,50 l15,8.5 l-15,8.5 l-15,-8.5 z" />
+    <path
+        android:fillColor="#E1F5FE"
+        android:pathData="M57,58.5 l15,8.5 l0,17 l-15,-8.5 z" />
+    <path
+        android:fillColor="#B3E5FC"
+        android:pathData="M72,67 l15,-8.5 l0,17 l-15,8.5 z" />
+</vector>
