@@ -26,6 +26,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -68,6 +69,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -81,15 +83,19 @@ import androidx.compose.runtime.getValue
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -104,6 +110,10 @@ import com.example.plastilaniaapp.ui.theme.PlastilaniaAppTheme
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
@@ -126,10 +136,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var isScanning by remember { mutableStateOf(false) }
     var showQuantityDialog by remember { mutableStateOf(false) }
     var isConfirming by remember { mutableStateOf(false) }
     var showSplash by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         delay(2000)
@@ -144,6 +156,7 @@ fun MainScreen() {
     // Estados
     var grupo by remember { mutableStateOf("90 - PRODUTO ACABADO") }
     var produto by remember { mutableStateOf("AGUARDANDO LEITURA") }
+    var prxCodigo by remember { mutableStateOf("") }
     var etiqueta by remember { mutableStateOf("") }
     var quantidade by remember { mutableStateOf("0") }
     var localOrigem by remember { mutableStateOf("01 - MATRIZ") }
@@ -153,14 +166,50 @@ fun MainScreen() {
         ConfirmationScreen(
             produto = produto,
             quantidade = quantidade,
-            onBack = { isConfirming = false },
+            isLoading = isLoading,
+            onBack = { if (!isLoading) isConfirming = false },
             onConfirm = {
-                Toast.makeText(context, "Operação realizada com sucesso!", Toast.LENGTH_SHORT).show()
-                // Resetar estados
-                produto = "AGUARDANDO LEITURA"
-                etiqueta = ""
-                quantidade = "0"
-                isConfirming = false
+                isLoading = true
+                coroutineScope.launch {
+                    try {
+                        val api = ApiService.create()
+                        val dataAtual = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        
+                        val request = MovimentacaoRequest(
+                            empCodigo = "01",
+                            mrcCodigo = "01",
+                            dataOcorrencia = dataAtual,
+                            numeroDocumento = 1,
+                            quantidade = quantidade.toIntOrNull() ?: 0,
+                            servidorB = true,
+                            toaCodigo = 10,
+                            gpxCodigo = 81,
+                            prxCodigo = prxCodigo,
+                            locCodigo = 2,
+                            endereco = "",
+                            cliFor = 0
+                        )
+
+                        val response = api.registrarEntrada(request)
+                        
+                        if (response.isSuccessful) {
+                            Toast.makeText(context, "Operação realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                            // Resetar estados
+                            produto = "AGUARDANDO LEITURA"
+                            prxCodigo = ""
+                            etiqueta = ""
+                            quantidade = "0"
+                            isConfirming = false
+                        } else {
+                            Toast.makeText(context, "Erro: ${response.code()} - ${response.message()}", Toast.LENGTH_LONG).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e("API_ERROR", "Erro ao chamar API", e)
+                        Toast.makeText(context, "Falha na conexão: ${e.message}", Toast.LENGTH_LONG).show()
+                    } finally {
+                        isLoading = false
+                    }
+                }
             }
         )
         return
@@ -198,11 +247,13 @@ fun MainScreen() {
                     val parts = result.split("|")
                     if (parts.size >= 3) {
                         etiqueta = parts[0]
+                        prxCodigo = parts[0]
                         produto = "${parts[0]} - ${parts[1]}"
                         quantidade = parts[2]
                         isScanning = false
                     } else {
                         etiqueta = result
+                        prxCodigo = result
                         produto = result
                         isScanning = false
                     }
@@ -240,6 +291,7 @@ fun MainScreen() {
             onCancel = {
                 grupo = "90 - MATERIAL ACABADO"
                 produto = "AGUARDANDO LEITURA"
+                prxCodigo = ""
                 etiqueta = ""
                 quantidade = "0"
                 localOrigem = "01 - MATRIZ"
@@ -263,6 +315,7 @@ fun MainScreen() {
 fun ConfirmationScreen(
     produto: String,
     quantidade: String,
+    isLoading: Boolean = false,
     onBack: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -327,19 +380,25 @@ fun ConfirmationScreen(
 
             Button(
                 onClick = onConfirm,
+                enabled = !isLoading,
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Default.CheckCircle, null)
-                Spacer(Modifier.width(8.dp))
-                Text("SIM, CONFIRMAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Icon(Icons.Default.CheckCircle, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("SIM, CONFIRMAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(Modifier.height(12.dp))
 
             Button(
                 onClick = onBack,
+                enabled = !isLoading,
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White),
                 shape = RoundedCornerShape(12.dp)
@@ -545,52 +604,32 @@ fun SplashScreen() {
             .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .background(Color(0xFF0D47A1), RoundedCornerShape(20.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "K",
-                    color = Color.White,
-                    fontSize = 60.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            Text(
-                text = "KEYSYSTEMS",
-                color = Color(0xFF0D47A1),
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 4.sp
-            )
-        }
+        Image(
+            painter = painterResource(id = R.drawable.logo_key),
+            contentDescription = "KeySystems Logo",
+            modifier = Modifier.size(180.dp),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
 @Composable
 fun HeaderSection() {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Image(
+            painter = painterResource(id = R.drawable.logo_key),
+            contentDescription = "Logo KeySystems",
             modifier = Modifier
-                .size(32.dp)
-                .background(Color(0xFF0D47A1), RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "K",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black
-            )
-        }
-        Spacer(Modifier.width(8.dp))
+                .size(45.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            contentScale = ContentScale.Fit
+        )
+        Spacer(Modifier.width(10.dp))
         Text("ESTOQUE", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFF0D47A1))
         Text(" | PLASTILANIA", fontSize = 13.sp, color = Color(0xFF1976D2))
     }
