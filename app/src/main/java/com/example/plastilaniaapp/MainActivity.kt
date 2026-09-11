@@ -146,17 +146,13 @@ fun MainScreen() {
     var isScanning by remember { mutableStateOf(false) }
     var isEditingQuantity by remember { mutableStateOf(false) }
     var isConfirming by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     var showSplash by remember { mutableStateOf(true) }
     var isLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         delay(2000)
         showSplash = false
-    }
-
-    if (showSplash) {
-        SplashScreen()
-        return
     }
 
     // Estados
@@ -167,6 +163,30 @@ fun MainScreen() {
     var quantidade by remember { mutableStateOf("0") }
     var localOrigem by remember { mutableStateOf("01 - MATRIZ") }
     var localDestino by remember { mutableStateOf("02 - FILIAL") }
+
+    if (errorMessage != null) {
+        ErrorScreen(
+            message = errorMessage!!,
+            onBack = {
+                errorMessage = null
+                isConfirming = false
+                // Reset Total
+                grupo = "90 - PRODUTO ACABADO"
+                produto = "AGUARDANDO LEITURA"
+                prxCodigo = ""
+                etiqueta = ""
+                quantidade = "0"
+                localOrigem = "01 - MATRIZ"
+                localDestino = "02 - FILIAL"
+            }
+        )
+        return
+    }
+
+    if (showSplash) {
+        SplashScreen()
+        return
+    }
 
     if (isEditingQuantity) {
         EditQuantityScreen(
@@ -238,12 +258,12 @@ fun MainScreen() {
                                 etiqueta = ""
                                 quantidade = "0"
                             } else {
-                                Toast.makeText(context, "Erro: ${resp.code()}", Toast.LENGTH_LONG).show()
+                                errorMessage = "Erro no servidor (Código: ${resp.code()}). Verifique a conexão ou tente novamente."
                             }
                         }
                     } catch (e: Exception) {
                         Log.e("API_ERROR", "Erro ao chamar API", e)
-                        Toast.makeText(context, "Falha na conexão: ${e.message}", Toast.LENGTH_LONG).show()
+                        errorMessage = "Falha na conexão: ${e.message ?: e.toString()}"
                     } finally {
                         isLoading = false
                     }
@@ -336,8 +356,8 @@ fun MainScreen() {
                 val qty = quantidade.toIntOrNull() ?: 0
                 if (produto == "AGUARDANDO LEITURA") {
                     Toast.makeText(context, "Aguardando leitura do produto", Toast.LENGTH_SHORT).show()
-                } else if (qty <= 1) {
-                    Toast.makeText(context, "Quantidade deve ser maior que 1", Toast.LENGTH_SHORT).show()
+                } else if (qty <= 0) {
+                    Toast.makeText(context, "Quantidade deve ser maior que 0", Toast.LENGTH_SHORT).show()
                 } else {
                     isConfirming = true
                 }
@@ -422,9 +442,9 @@ fun ConfirmationScreen(
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(32.dp),
-                        strokeWidth = 4.dp
+                        color = Color(0xFF00BFFF), // Azul Profundo/Céu Vibrante (DeepSkyBlue)
+                        modifier = Modifier.size(40.dp),
+                        strokeWidth = 6.dp
                     )
                 } else {
                     Icon(Icons.Default.CheckCircle, null)
@@ -451,12 +471,101 @@ fun ConfirmationScreen(
 }
 
 @Composable
+fun ErrorScreen(
+    message: String,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
+            .systemBarsPadding()
+    ) {
+        HeaderSection()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        tint = Color(0xFFD32F2F),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    Text(
+                        "Ops! Algo deu errado",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFB71C1C)
+                    )
+                    
+                    Spacer(Modifier.height(24.dp))
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFFFF5F5), RoundedCornerShape(12.dp))
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            "DETALHE TÉCNICO PARA O SUPORTE:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB71C1C)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            message,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF424242),
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            Button(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2), contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Close, null)
+                Spacer(Modifier.width(8.dp))
+                Text("VOLTAR AO INÍCIO", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 fun EditQuantityScreen(
     produto: String,
     initialQuantity: String,
     onConfirm: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var textFieldValue by remember {
         mutableStateOf(
             TextFieldValue(
@@ -563,14 +672,21 @@ fun EditQuantityScreen(
             Spacer(Modifier.height(32.dp))
 
             Button(
-                onClick = { onConfirm(textFieldValue.text) },
+                onClick = { 
+                    val qty = textFieldValue.text.toIntOrNull() ?: 0
+                    if (qty > 0) {
+                        onConfirm(textFieldValue.text)
+                    } else {
+                        Toast.makeText(context, "A quantidade deve ser maior que zero!", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.CheckCircle, null)
                 Spacer(Modifier.width(8.dp))
-                Text("CONFIRMAR ALTERAÇÃO", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("CONFIRMAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
 
             Spacer(Modifier.height(12.dp))
