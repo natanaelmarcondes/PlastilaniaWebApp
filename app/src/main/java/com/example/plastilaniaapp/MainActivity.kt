@@ -51,6 +51,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Category
@@ -62,6 +64,7 @@ import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -102,6 +105,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,7 +144,7 @@ fun MainScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var isScanning by remember { mutableStateOf(false) }
-    var showQuantityDialog by remember { mutableStateOf(false) }
+    var isEditingQuantity by remember { mutableStateOf(false) }
     var isConfirming by remember { mutableStateOf(false) }
     var showSplash by remember { mutableStateOf(true) }
     var isLoading by remember { mutableStateOf(false) }
@@ -163,6 +167,19 @@ fun MainScreen() {
     var quantidade by remember { mutableStateOf("0") }
     var localOrigem by remember { mutableStateOf("01 - MATRIZ") }
     var localDestino by remember { mutableStateOf("02 - FILIAL") }
+
+    if (isEditingQuantity) {
+        EditQuantityScreen(
+            produto = produto,
+            initialQuantity = quantidade,
+            onConfirm = {
+                quantidade = it
+                isEditingQuantity = false
+            },
+            onBack = { isEditingQuantity = false }
+        )
+        return
+    }
 
     if (isConfirming) {
         ConfirmationScreen(
@@ -236,17 +253,6 @@ fun MainScreen() {
         return
     }
 
-    if (showQuantityDialog) {
-        QuantityDialog(
-            initialValue = quantidade,
-            onConfirm = {
-                quantidade = it
-                showQuantityDialog = false
-            },
-            onDismiss = { showQuantityDialog = false }
-        )
-    }
-
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -304,7 +310,7 @@ fun MainScreen() {
             onEtiquetaChange = { etiqueta = it },
             onQuantityClick = {
                 if (produto != "AGUARDANDO LEITURA") {
-                    showQuantityDialog = true
+                    isEditingQuantity = true
                 } else {
                     Toast.makeText(context, "Leia um produto primeiro!", Toast.LENGTH_SHORT).show()
                 }
@@ -415,7 +421,11 @@ fun ConfirmationScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(32.dp),
+                        strokeWidth = 4.dp
+                    )
                 } else {
                     Icon(Icons.Default.CheckCircle, null)
                     Spacer(Modifier.width(8.dp))
@@ -441,62 +451,155 @@ fun ConfirmationScreen(
 }
 
 @Composable
-fun QuantityDialog(
-    initialValue: String,
+fun EditQuantityScreen(
+    produto: String,
+    initialQuantity: String,
     onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
+    onBack: () -> Unit
 ) {
     var textFieldValue by remember {
         mutableStateOf(
             TextFieldValue(
-                text = initialValue,
-                selection = TextRange(0, initialValue.length)
+                text = initialQuantity,
+                selection = TextRange(initialQuantity.length)
             )
         )
     }
-    val focusRequester = remember { FocusRequester() }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
+            .systemBarsPadding()
+    ) {
+        HeaderSection()
 
-    LaunchedEffect(Unit) {
-        delay(100)
-        focusRequester.requestFocus()
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Editar Quantidade", fontWeight = FontWeight.Bold) },
-        text = {
-            OutlinedTextField(
-                value = textFieldValue,
-                onValueChange = { newValue ->
-                    // Aceita apenas números inteiros
-                    if (newValue.text.all { it.isDigit() }) {
-                        textFieldValue = newValue
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Editar Quantidade",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0D47A1)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        produto,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    Spacer(Modifier.height(32.dp))
+                    
+                    // Display and Manual Input
+                    OutlinedTextField(
+                        value = textFieldValue,
+                        onValueChange = { newValue ->
+                            if (newValue.text.all { char -> char.isDigit() }) {
+                                textFieldValue = newValue
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF0D47A1),
+                            textAlign = TextAlign.Center
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    Spacer(Modifier.height(24.dp))
+                    
+                    // Quick Buttons Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickQuantityButton(text = "-10", onClick = { 
+                            val current = textFieldValue.text.toIntOrNull() ?: 0
+                            val newText = (current - 10).coerceAtLeast(0).toString()
+                            textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                        }, modifier = Modifier.weight(1f))
+                        QuickQuantityButton(text = "-1", onClick = { 
+                            val current = textFieldValue.text.toIntOrNull() ?: 0
+                            val newText = (current - 1).coerceAtLeast(0).toString()
+                            textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                        }, modifier = Modifier.weight(1f))
+                        QuickQuantityButton(text = "+1", onClick = { 
+                            val current = textFieldValue.text.toIntOrNull() ?: 0
+                            val newText = (current + 1).toString()
+                            textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                        }, modifier = Modifier.weight(1f))
+                        QuickQuantityButton(text = "+10", onClick = { 
+                            val current = textFieldValue.text.toIntOrNull() ?: 0
+                            val newText = (current + 10).toString()
+                            textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                        }, modifier = Modifier.weight(1f))
                     }
-                },
-                label = { Text("Nova Quantidade") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(textFieldValue.text) }) {
-                Text("Confirmar", fontWeight = FontWeight.Bold)
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+
+            Spacer(Modifier.height(32.dp))
+
+            Button(
+                onClick = { onConfirm(textFieldValue.text) },
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.CheckCircle, null)
+                Spacer(Modifier.width(8.dp))
+                Text("CONFIRMAR ALTERAÇÃO", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Close, null)
+                Spacer(Modifier.width(8.dp))
+                Text("CANCELAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
-    )
+    }
+}
+
+@Composable
+fun QuickQuantityButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(50.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE3F2FD), contentColor = Color(0xFF0D47A1)),
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Text(text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+    }
 }
 
 @Composable
@@ -565,7 +668,7 @@ fun InventoryFormScreen(
                 
                 // Qtd Row
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconBoxCompact(Icons.Default.Numbers, "Quantidade")
+                    IconBoxCompact(Icons.AutoMirrored.Filled.Sort, "Quantidade")
                     Spacer(Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
@@ -698,8 +801,7 @@ fun HeaderSection() {
             painter = painterResource(id = R.drawable.logo_key),
             contentDescription = "Logo KeySystems",
             modifier = Modifier
-                .size(45.dp)
-                .clip(RoundedCornerShape(12.dp)),
+                .size(45.dp),
             contentScale = ContentScale.Fit
         )
         Spacer(Modifier.width(10.dp))
