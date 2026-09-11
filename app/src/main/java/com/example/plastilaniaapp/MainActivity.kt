@@ -561,11 +561,11 @@ fun InventoryFormScreen(
                     }
                 }
 
-                FormFieldRowCompact(Icons.Default.Inventory, "Prod.", produto, false)
+                FormFieldRowCompact(Icons.Default.Inventory, "Produto", produto, false)
                 
                 // Qtd Row
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconBoxCompact(Icons.Default.Numbers, "Qtd.")
+                    IconBoxCompact(Icons.Default.Numbers, "Quantidade")
                     Spacer(Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
@@ -593,13 +593,13 @@ fun InventoryFormScreen(
                     }
                 }
 
-                FormFieldRowCompact(Icons.Default.NorthEast, "Orig.", localOrigem, false)
+                FormFieldRowCompact(Icons.Default.NorthEast, "Origem", localOrigem, false)
                 
                 // Destino com Menu
                 Box {
                     FormFieldRowCompact(
                         icon = Icons.Default.SouthEast,
-                        label = "Dest.",
+                        label = "Destino",
                         value = localDestino,
                         isDropdown = true,
                         onClick = { showDestinoMenu = true }
@@ -664,12 +664,25 @@ fun SplashScreen() {
             .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.logo_key),
-            contentDescription = "KeySystems Logo",
-            modifier = Modifier.size(180.dp),
-            contentScale = ContentScale.Fit
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo_key),
+                contentDescription = "KeySystems Logo",
+                modifier = Modifier
+                    .size(180.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Keysystems Informática",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0D47A1)
+            )
+        }
     }
 }
 
@@ -686,7 +699,7 @@ fun HeaderSection() {
             contentDescription = "Logo KeySystems",
             modifier = Modifier
                 .size(45.dp)
-                .clip(RoundedCornerShape(4.dp)),
+                .clip(RoundedCornerShape(12.dp)),
             contentScale = ContentScale.Fit
         )
         Spacer(Modifier.width(10.dp))
@@ -697,7 +710,7 @@ fun HeaderSection() {
 
 @Composable
 fun IconBoxCompact(icon: ImageVector, label: String) {
-    Row(modifier = Modifier.width(80.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.width(110.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier.size(28.dp).background(Color(0xFFE3F2FD), RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center

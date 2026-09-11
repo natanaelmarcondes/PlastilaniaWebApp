@@ -1,38 +1,22 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Cube 1 (Top) -->
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Background square that fills the 108dp canvas more effectively -->
+    <!-- Using a slightly larger viewport scale for the image to "fill everything" -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,25 l15,8.5 l-15,8.5 l-15,-8.5 z" />
-    <path
-        android:fillColor="#E1F5FE"
-        android:pathData="M39,33.5 l15,8.5 l0,17 l-15,-8.5 z" />
-    <path
-        android:fillColor="#B3E5FC"
-        android:pathData="M54,42 l15,-8.5 l0,17 l-15,8.5 z" />
+        android:pathData="M0,0 h100 v100 h-100 z"
+        android:fillColor="#0D47A1" />
 
-    <!-- Cube 2 (Bottom Left) -->
+    <!-- Stylized "K" in White, scaled up to fill more area -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M36,50 l15,8.5 l-15,8.5 l-15,-8.5 z" />
-    <path
-        android:fillColor="#E1F5FE"
-        android:pathData="M21,58.5 l15,8.5 l0,17 l-15,-8.5 z" />
-    <path
-        android:fillColor="#B3E5FC"
-        android:pathData="M36,67 l15,-8.5 l0,17 l-15,8.5 z" />
-
-    <!-- Cube 3 (Bottom Right) -->
+        android:pathData="M15,15 L35,15 L35,85 L15,85 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M72,50 l15,8.5 l-15,8.5 l-15,-8.5 z" />
+        android:pathData="M35,50 L75,15 L95,15 L50,58 Z" />
     <path
-        android:fillColor="#E1F5FE"
-        android:pathData="M57,58.5 l15,8.5 l0,17 l-15,-8.5 z" />
-    <path
-        android:fillColor="#B3E5FC"
-        android:pathData="M72,67 l15,-8.5 l0,17 l-15,8.5 z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,42 L95,85 L75,85 L35,50 Z" />
 </vector>
