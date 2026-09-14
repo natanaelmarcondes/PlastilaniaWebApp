@@ -2,6 +2,8 @@ package com.example.plastilaniaapp
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.util.Log
 import android.view.ViewGroup
@@ -26,6 +28,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,7 +44,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -51,21 +53,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Factory
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NorthEast
-import androidx.compose.material.icons.filled.Numbers
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SouthEast
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -80,21 +84,18 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -104,7 +105,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -116,11 +119,35 @@ import com.example.plastilaniaapp.ui.theme.PlastilaniaAppTheme
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+
+enum class OperacaoMode(
+    val title: String,
+    val senha: String,
+    val primaryColor: Color,
+    val lightColor: Color,
+    val icon: ImageVector
+) {
+    PRODUCAO(
+        title = "PRODUÇÃO",
+        senha = "123",
+        primaryColor = Color(0xFF2E7D32),
+        lightColor = Color(0xFFE8F5E9),
+        icon = Icons.Default.Factory
+    ),
+    TRANSFERENCIA(
+        title = "TRANSFERÊNCIA",
+        senha = "123",
+        primaryColor = Color(0xFF1565C0),
+        lightColor = Color(0xFFE3F2FD),
+        icon = Icons.Default.SwapHoriz
+    )
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,6 +177,11 @@ fun MainScreen() {
     var showSplash by remember { mutableStateOf(true) }
     var isLoading by remember { mutableStateOf(false) }
 
+    // Modo Selecionado (Produção ou Transferência)
+    var selectedMode by remember { mutableStateOf<OperacaoMode?>(null) }
+    var invalidScanMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) {
         delay(2000)
         showSplash = false
@@ -161,23 +193,40 @@ fun MainScreen() {
     var prxCodigo by remember { mutableStateOf("") }
     var etiqueta by remember { mutableStateOf("") }
     var quantidade by remember { mutableStateOf("0") }
+    var maxQuantidadeLida by remember { mutableStateOf(0) }
     var localOrigem by remember { mutableStateOf("01 - MATRIZ") }
     var localDestino by remember { mutableStateOf("02 - FILIAL") }
+
+    fun resetFormState() {
+        grupo = "90 - PRODUTO ACABADO"
+        produto = "AGUARDANDO LEITURA"
+        prxCodigo = ""
+        etiqueta = ""
+        quantidade = "0"
+        maxQuantidadeLida = 0
+        if (selectedMode == OperacaoMode.PRODUCAO) {
+            localOrigem = ""
+            localDestino = "01 - MATRIZ"
+        } else {
+            localOrigem = "01 - MATRIZ"
+            localDestino = "02 - FILIAL"
+        }
+    }
 
     if (errorMessage != null) {
         ErrorScreen(
             message = errorMessage!!,
+            selectedMode = selectedMode,
+            onChangeMode = {
+                errorMessage = null
+                isConfirming = false
+                selectedMode = null
+                resetFormState()
+            },
             onBack = {
                 errorMessage = null
                 isConfirming = false
-                // Reset Total
-                grupo = "90 - PRODUTO ACABADO"
-                produto = "AGUARDANDO LEITURA"
-                prxCodigo = ""
-                etiqueta = ""
-                quantidade = "0"
-                localOrigem = "01 - MATRIZ"
-                localDestino = "02 - FILIAL"
+                resetFormState()
             }
         )
         return
@@ -188,10 +237,39 @@ fun MainScreen() {
         return
     }
 
+    if (selectedMode == null) {
+        ModeSelectionScreen(
+            onSelectMode = { mode ->
+                selectedMode = mode
+                if (mode == OperacaoMode.PRODUCAO) {
+                    localOrigem = ""
+                    localDestino = "01 - MATRIZ"
+                } else {
+                    localOrigem = "01 - MATRIZ"
+                    localDestino = "02 - FILIAL"
+                }
+                grupo = "90 - PRODUTO ACABADO"
+                produto = "AGUARDANDO LEITURA"
+                prxCodigo = ""
+                etiqueta = ""
+                quantidade = "0"
+                maxQuantidadeLida = 0
+            }
+        )
+        return
+    }
+
     if (isEditingQuantity) {
         EditQuantityScreen(
             produto = produto,
             initialQuantity = quantidade,
+            maxQuantity = maxQuantidadeLida,
+            selectedMode = selectedMode,
+            onChangeMode = {
+                isEditingQuantity = false
+                selectedMode = null
+                resetFormState()
+            },
             onConfirm = {
                 quantidade = it
                 isEditingQuantity = false
@@ -205,7 +283,15 @@ fun MainScreen() {
         ConfirmationScreen(
             produto = produto,
             quantidade = quantidade,
+            selectedMode = selectedMode,
             isLoading = isLoading,
+            onChangeMode = {
+                if (!isLoading) {
+                    isConfirming = false
+                    selectedMode = null
+                    resetFormState()
+                }
+            },
             onBack = { if (!isLoading) isConfirming = false },
             onConfirm = {
                 isLoading = true
@@ -229,34 +315,26 @@ fun MainScreen() {
                             cliFor = 0
                         )
 
-                        if (localOrigem == "01 - MATRIZ" && localDestino == "02 - FILIAL") {
+                        if (selectedMode == OperacaoMode.TRANSFERENCIA) {
                             // Chamada 1: toaCodigo 60 (Saída da Matriz)
                             val resp1 = api.registrarEntrada(baseRequest.copy(toaCodigo = 60, locCodigo = 1))
                             // Chamada 2: toaCodigo 10 (Entrada na Filial)
                             val resp2 = api.registrarEntrada(baseRequest.copy(toaCodigo = 10, locCodigo = 2))
                             
                             if (resp1.isSuccessful && resp2.isSuccessful) {
-                                Toast.makeText(context, "Movimentação de estoque realizada com sucesso!", Toast.LENGTH_SHORT).show()
                                 isConfirming = false
-                                // Reset
-                                produto = "AGUARDANDO LEITURA"
-                                prxCodigo = ""
-                                etiqueta = ""
-                                quantidade = "0"
+                                resetFormState()
+                                successMessage = "Movimentação de transferência realizada com sucesso!"
                             } else {
-                                Toast.makeText(context, "Erro em uma das chamadas", Toast.LENGTH_LONG).show()
+                                errorMessage = "Erro no servidor ao registrar a transferência. Verifique a conexão e tente novamente."
                             }
                         } else {
-                            // Chamada Única: toaCodigo 10 (Entrada na Matriz)
+                            // Produção: Chamada Única: toaCodigo 10 (Entrada na Matriz)
                             val resp = api.registrarEntrada(baseRequest.copy(toaCodigo = 10, locCodigo = 1))
                             if (resp.isSuccessful) {
-                                Toast.makeText(context, "Movimentação realizada com sucesso!", Toast.LENGTH_SHORT).show()
                                 isConfirming = false
-                                // Reset
-                                produto = "AGUARDANDO LEITURA"
-                                prxCodigo = ""
-                                etiqueta = ""
-                                quantidade = "0"
+                                resetFormState()
+                                successMessage = "Movimentação de produção realizada com sucesso!"
                             } else {
                                 errorMessage = "Erro no servidor (Código: ${resp.code()}). Verifique a conexão ou tente novamente."
                             }
@@ -291,17 +369,29 @@ fun MainScreen() {
         Box(modifier = Modifier.fillMaxSize()) {
             CameraScanner(
                 onResult = { result ->
-                    val parts = result.split("|")
-                    if (parts.size >= 3) {
-                        etiqueta = parts[0]
-                        prxCodigo = parts[0]
-                        produto = "${parts[0]} - ${parts[1]}"
-                        quantidade = parts[2]
-                        isScanning = false
+                    val cleanResult = result.trim()
+                    if (cleanResult.startsWith("KEY|", ignoreCase = true)) {
+                        val parts = cleanResult.split("|")
+                        if (parts.size >= 4) {
+                            val codPro = parts[1].trim()
+                            val descPro = parts[2].trim()
+                            val qtdStr = parts[3].trim()
+                            val qtdVal = qtdStr.toIntOrNull() ?: 0
+
+                            playSuccessBeep()
+
+                            etiqueta = cleanResult
+                            prxCodigo = codPro
+                            produto = "$codPro - $descPro"
+                            quantidade = qtdStr
+                            maxQuantidadeLida = qtdVal
+                            isScanning = false
+                        } else {
+                            invalidScanMessage = "A etiqueta lida possui formato inválido."
+                            isScanning = false
+                        }
                     } else {
-                        etiqueta = result
-                        prxCodigo = result
-                        produto = result
+                        invalidScanMessage = "A etiqueta lida não é válida."
                         isScanning = false
                     }
                 }
@@ -317,6 +407,18 @@ fun MainScreen() {
             }
         }
     } else {
+        if (invalidScanMessage != null) {
+            InvalidScanDialog(
+                message = invalidScanMessage!!,
+                onDismiss = { invalidScanMessage = null }
+            )
+        }
+        if (successMessage != null) {
+            SuccessDialog(
+                message = successMessage!!,
+                onDismiss = { successMessage = null }
+            )
+        }
         InventoryFormScreen(
             grupo = grupo,
             produto = produto,
@@ -324,6 +426,11 @@ fun MainScreen() {
             quantidade = quantidade,
             localOrigem = localOrigem,
             localDestino = localDestino,
+            selectedMode = selectedMode,
+            onChangeMode = {
+                selectedMode = null
+                resetFormState()
+            },
             onScanClick = {
                 if (hasCameraPermission) isScanning = true else launcher.launch(Manifest.permission.CAMERA)
             },
@@ -337,20 +444,9 @@ fun MainScreen() {
             },
             onDestinoChange = { novoDestino ->
                 localDestino = novoDestino
-                if (novoDestino.contains("MATRIZ")) {
-                    localOrigem = ""
-                } else {
-                    localOrigem = "01 - MATRIZ"
-                }
             },
             onCancel = {
-                grupo = "90 - MATERIAL ACABADO"
-                produto = "AGUARDANDO LEITURA"
-                prxCodigo = ""
-                etiqueta = ""
-                quantidade = "0"
-                localOrigem = "01 - MATRIZ"
-                localDestino = "02 - FILIAL"
+                resetFormState()
             },
             onConfirm = {
                 val qty = quantidade.toIntOrNull() ?: 0
@@ -367,10 +463,383 @@ fun MainScreen() {
 }
 
 @Composable
+fun ModeSelectionScreen(
+    onSelectMode: (OperacaoMode) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    var pendingMode by remember { mutableStateOf<OperacaoMode?>(null) }
+
+    if (pendingMode != null) {
+        PasswordDialog(
+            mode = pendingMode!!,
+            onDismiss = { pendingMode = null },
+            onSuccess = {
+                val mode = pendingMode!!
+                pendingMode = null
+                onSelectMode(mode)
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
+            .systemBarsPadding()
+    ) {
+        HeaderSection(onExitApp = { activity?.finish() })
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Selecione a Operação",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF0D47A1)
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Escolha a modalidade de movimentação:",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF555555),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // Primeiro: PRODUÇÃO
+            ModeOptionCard(
+                title = "PRODUÇÃO",
+                description = "Entrada de produção na Matriz",
+                tagline = "Origem: Matriz",
+                primaryColor = OperacaoMode.PRODUCAO.primaryColor,
+                lightColor = OperacaoMode.PRODUCAO.lightColor,
+                icon = OperacaoMode.PRODUCAO.icon,
+                onClick = { pendingMode = OperacaoMode.PRODUCAO }
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            // Segundo: TRANSFERÊNCIA
+            ModeOptionCard(
+                title = "TRANSFERÊNCIA",
+                description = "Transferir produtos da Matriz para Filial",
+                tagline = "Origem: Matriz  ➜  Destino: Filial",
+                primaryColor = OperacaoMode.TRANSFERENCIA.primaryColor,
+                lightColor = OperacaoMode.TRANSFERENCIA.lightColor,
+                icon = OperacaoMode.TRANSFERENCIA.icon,
+                onClick = { pendingMode = OperacaoMode.TRANSFERENCIA }
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // Botão Sair do Sistema
+            Button(
+                onClick = { activity?.finish() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFEBEE),
+                    contentColor = Color(0xFFD32F2F)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFFFFCDD2))
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Sair do Sistema",
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "SAIR DO SISTEMA",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ModeOptionCard(
+    title: String,
+    description: String,
+    tagline: String,
+    primaryColor: Color,
+    lightColor: Color,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(2.dp, primaryColor.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(22.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(lightColor, RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = primaryColor,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+
+            Spacer(Modifier.width(18.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Black,
+                    color = primaryColor
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = description,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.DarkGray
+                )
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .background(lightColor, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = tagline,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = primaryColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PasswordDialog(
+    mode: OperacaoMode,
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = mode.primaryColor,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Senha - ${mode.title}",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = mode.primaryColor
+                )
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Digite a senha para acessar o modo ${mode.title.lowercase()}:",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        isError = false
+                    },
+                    label = { Text("Senha") },
+                    singleLine = true,
+                    isError = isError,
+                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isPasswordVisible) "Ocultar senha" else "Mostrar senha"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                if (isError) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Senha incorreta! Tente novamente.",
+                        color = Color(0xFFD32F2F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (password == mode.senha) {
+                        onSuccess()
+                    } else {
+                        isError = true
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = mode.primaryColor)
+            ) {
+                Text("ACESSAR", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCELAR", color = Color.Gray)
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
+fun InvalidScanDialog(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Cancel,
+                contentDescription = null,
+                tint = Color(0xFFD32F2F),
+                modifier = Modifier.size(52.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Etiqueta Inválida!",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFB71C1C),
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = message,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF424242),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("OK", fontWeight = FontWeight.Bold)
+            }
+        },
+        shape = RoundedCornerShape(16.dp),
+        containerColor = Color.White
+    )
+}
+
+@Composable
+fun SuccessDialog(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF2E7D32),
+                modifier = Modifier.size(52.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Sucesso!",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF1B5E20),
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = message,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF424242),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("OK", fontWeight = FontWeight.Bold)
+            }
+        },
+        shape = RoundedCornerShape(16.dp),
+        containerColor = Color.White
+    )
+}
+
+@Composable
 fun ConfirmationScreen(
     produto: String,
     quantidade: String,
+    selectedMode: OperacaoMode? = null,
     isLoading: Boolean = false,
+    onChangeMode: (() -> Unit)? = null,
     onBack: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -380,7 +849,7 @@ fun ConfirmationScreen(
             .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
             .systemBarsPadding()
     ) {
-        HeaderSection()
+        HeaderSection(selectedMode = selectedMode, onChangeMode = onChangeMode)
 
         Column(
             modifier = Modifier
@@ -442,7 +911,7 @@ fun ConfirmationScreen(
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
-                        color = Color(0xFF00BFFF), // Azul Profundo/Céu Vibrante (DeepSkyBlue)
+                        color = Color(0xFF00BFFF),
                         modifier = Modifier.size(40.dp),
                         strokeWidth = 6.dp
                     )
@@ -473,6 +942,8 @@ fun ConfirmationScreen(
 @Composable
 fun ErrorScreen(
     message: String,
+    selectedMode: OperacaoMode? = null,
+    onChangeMode: (() -> Unit)? = null,
     onBack: () -> Unit
 ) {
     Column(
@@ -481,7 +952,7 @@ fun ErrorScreen(
             .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
             .systemBarsPadding()
     ) {
-        HeaderSection()
+        HeaderSection(selectedMode = selectedMode, onChangeMode = onChangeMode)
 
         Column(
             modifier = Modifier
@@ -562,6 +1033,9 @@ fun ErrorScreen(
 fun EditQuantityScreen(
     produto: String,
     initialQuantity: String,
+    maxQuantity: Int,
+    selectedMode: OperacaoMode? = null,
+    onChangeMode: (() -> Unit)? = null,
     onConfirm: (String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -575,13 +1049,16 @@ fun EditQuantityScreen(
         )
     }
     
+    val currentEnteredQty = textFieldValue.text.toIntOrNull() ?: 0
+    val isExceedingMax = maxQuantity > 0 && currentEnteredQty > maxQuantity
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
             .systemBarsPadding()
     ) {
-        HeaderSection()
+        HeaderSection(selectedMode = selectedMode, onChangeMode = onChangeMode)
 
         Column(
             modifier = Modifier
@@ -616,27 +1093,67 @@ fun EditQuantityScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     
-                    Spacer(Modifier.height(32.dp))
+                    if (maxQuantity > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFE3F2FD), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "MÁXIMO PERMITIDO (ETIQUETA): $maxQuantity",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF1565C0)
+                            )
+                        }
+                    }
                     
-                    // Display and Manual Input
+                    Spacer(Modifier.height(24.dp))
+                    
+                    // Display e Input Manual
                     OutlinedTextField(
                         value = textFieldValue,
                         onValueChange = { newValue ->
                             if (newValue.text.all { char -> char.isDigit() }) {
-                                textFieldValue = newValue
+                                val valInt = newValue.text.toIntOrNull() ?: 0
+                                if (maxQuantity <= 0 || valInt <= maxQuantity) {
+                                    textFieldValue = newValue
+                                } else {
+                                    textFieldValue = TextFieldValue(
+                                        text = maxQuantity.toString(),
+                                        selection = TextRange(maxQuantity.toString().length)
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        "Quantidade máxima permitida é $maxQuantity",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
                         },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
+                        isError = isExceedingMax,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 48.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF0D47A1),
+                            color = if (isExceedingMax) Color(0xFFD32F2F) else Color(0xFF0D47A1),
                             textAlign = TextAlign.Center
                         ),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    if (isExceedingMax) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "A quantidade não pode ser maior que a quantidade lida ($maxQuantity)",
+                            color = Color(0xFFD32F2F),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     
                     Spacer(Modifier.height(24.dp))
                     
@@ -657,12 +1174,22 @@ fun EditQuantityScreen(
                         }, modifier = Modifier.weight(1f))
                         QuickQuantityButton(text = "+1", onClick = { 
                             val current = textFieldValue.text.toIntOrNull() ?: 0
-                            val newText = (current + 1).toString()
+                            val target = current + 1
+                            val capped = if (maxQuantity > 0) target.coerceAtMost(maxQuantity) else target
+                            if (target > maxQuantity && maxQuantity > 0) {
+                                Toast.makeText(context, "Limite máximo da etiqueta é $maxQuantity", Toast.LENGTH_SHORT).show()
+                            }
+                            val newText = capped.toString()
                             textFieldValue = TextFieldValue(newText, TextRange(newText.length))
                         }, modifier = Modifier.weight(1f))
                         QuickQuantityButton(text = "+10", onClick = { 
                             val current = textFieldValue.text.toIntOrNull() ?: 0
-                            val newText = (current + 10).toString()
+                            val target = current + 10
+                            val capped = if (maxQuantity > 0) target.coerceAtMost(maxQuantity) else target
+                            if (target > maxQuantity && maxQuantity > 0) {
+                                Toast.makeText(context, "Limite máximo da etiqueta é $maxQuantity", Toast.LENGTH_SHORT).show()
+                            }
+                            val newText = capped.toString()
                             textFieldValue = TextFieldValue(newText, TextRange(newText.length))
                         }, modifier = Modifier.weight(1f))
                     }
@@ -674,10 +1201,12 @@ fun EditQuantityScreen(
             Button(
                 onClick = { 
                     val qty = textFieldValue.text.toIntOrNull() ?: 0
-                    if (qty > 0) {
-                        onConfirm(textFieldValue.text)
-                    } else {
+                    if (qty <= 0) {
                         Toast.makeText(context, "A quantidade deve ser maior que zero!", Toast.LENGTH_SHORT).show()
+                    } else if (maxQuantity > 0 && qty > maxQuantity) {
+                        Toast.makeText(context, "A quantidade não pode ser maior que $maxQuantity!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        onConfirm(textFieldValue.text)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(60.dp),
@@ -726,6 +1255,8 @@ fun InventoryFormScreen(
     quantidade: String,
     localOrigem: String,
     localDestino: String,
+    selectedMode: OperacaoMode? = null,
+    onChangeMode: (() -> Unit)? = null,
     onScanClick: () -> Unit,
     onEtiquetaChange: (String) -> Unit,
     onQuantityClick: () -> Unit,
@@ -735,14 +1266,23 @@ fun InventoryFormScreen(
 ) {
     val scrollState = rememberScrollState()
     var showDestinoMenu by remember { mutableStateOf(false) }
+    val isTransferencia = selectedMode == OperacaoMode.TRANSFERENCIA
+
+    val modePrimaryColor = selectedMode?.primaryColor ?: Color(0xFF1976D2)
+    val modeLightColor = selectedMode?.lightColor ?: Color(0xFFE3F2FD)
+    val bgGradient = if (selectedMode == OperacaoMode.PRODUCAO) {
+        listOf(Color(0xFFF4FBF5), Color(0xFFE2F4E5))
+    } else {
+        listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
+            .background(Brush.verticalGradient(bgGradient))
             .systemBarsPadding()
     ) {
-        HeaderSection()
+        HeaderSection(selectedMode = selectedMode, onChangeMode = onChangeMode)
 
         Card(
             modifier = Modifier
@@ -750,8 +1290,9 @@ fun InventoryFormScreen(
                 .weight(1f)
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(12.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            shape = RoundedCornerShape(14.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            border = BorderStroke(2.dp, modePrimaryColor)
         ) {
             Column(
                 modifier = Modifier
@@ -760,6 +1301,32 @@ fun InventoryFormScreen(
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                if (selectedMode != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(modeLightColor, RoundedCornerShape(8.dp))
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = selectedMode.icon,
+                                contentDescription = null,
+                                tint = modePrimaryColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "OPERAÇÃO: ${selectedMode.title}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = modePrimaryColor
+                            )
+                        }
+                    }
+                }
+
                 FormFieldRowCompact(Icons.Default.Category, "Grupo", grupo, false)
 
                 // Botão de Leitura (Etiqueta) - Movido para antes do Prod.
@@ -771,7 +1338,10 @@ fun InventoryFormScreen(
                         onClick = onScanClick,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2), contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = modePrimaryColor,
+                            contentColor = Color.White
+                        ),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                     ) {
                         Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(24.dp))
@@ -808,39 +1378,41 @@ fun InventoryFormScreen(
                         onClick = onQuantityClick,
                         modifier = Modifier.size(50.dp).background(Color(0xFFF5F5F5), RoundedCornerShape(6.dp))
                     ) {
-                        Icon(Icons.Default.Edit, null, tint = Color(0xFF1976D2), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Edit, null, tint = modePrimaryColor, modifier = Modifier.size(20.dp))
                     }
                 }
 
                 FormFieldRowCompact(Icons.Default.NorthEast, "Origem", localOrigem, false)
                 
-                // Destino com Menu
+                // Destino (com Menu apenas se Transferência)
                 Box {
                     FormFieldRowCompact(
                         icon = Icons.Default.SouthEast,
                         label = "Destino",
                         value = localDestino,
-                        isDropdown = true,
-                        onClick = { showDestinoMenu = true }
+                        isDropdown = isTransferencia,
+                        onClick = if (isTransferencia) { { showDestinoMenu = true } } else null
                     )
-                    DropdownMenu(
-                        expanded = showDestinoMenu,
-                        onDismissRequest = { showDestinoMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("01 - MATRIZ") },
-                            onClick = {
-                                onDestinoChange("01 - MATRIZ")
-                                showDestinoMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("02 - FILIAL") },
-                            onClick = {
-                                onDestinoChange("02 - FILIAL")
-                                showDestinoMenu = false
-                            }
-                        )
+                    if (isTransferencia) {
+                        DropdownMenu(
+                            expanded = showDestinoMenu,
+                            onDismissRequest = { showDestinoMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("01 - MATRIZ") },
+                                onClick = {
+                                    onDestinoChange("01 - MATRIZ")
+                                    showDestinoMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("02 - FILIAL") },
+                                onClick = {
+                                    onDestinoChange("02 - FILIAL")
+                                    showDestinoMenu = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -864,7 +1436,7 @@ fun InventoryFormScreen(
             Button(
                 onClick = onConfirm,
                 modifier = Modifier.weight(1f).height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = modePrimaryColor, contentColor = Color.White),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(20.dp))
@@ -906,23 +1478,57 @@ fun SplashScreen() {
 }
 
 @Composable
-fun HeaderSection() {
+fun HeaderSection(
+    selectedMode: OperacaoMode? = null,
+    onChangeMode: (() -> Unit)? = null,
+    onExitApp: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.logo_key),
-            contentDescription = "Logo KeySystems",
-            modifier = Modifier
-                .size(45.dp),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(Modifier.width(10.dp))
-        Text("ESTOQUE", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFF0D47A1))
-        Text(" | PLASTILANIA", fontSize = 13.sp, color = Color(0xFF1976D2))
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo_key),
+                contentDescription = "Logo KeySystems",
+                modifier = Modifier.size(38.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("Keysystems Informática", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color(0xFF0D47A1))
+            Text(" | PLASTILANIA", fontSize = 11.sp, color = Color(0xFF1976D2))
+        }
+
+        val onButtonClick = onChangeMode ?: onExitApp
+        if (onButtonClick != null) {
+            Button(
+                onClick = onButtonClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFEBEE),
+                    contentColor = Color(0xFFD32F2F)
+                ),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.height(34.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Sair",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "Sair",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
@@ -1041,4 +1647,13 @@ private fun processImageProxy(barcodeScanner: BarcodeScanner, imageProxy: ImageP
             .addOnSuccessListener { barcodes -> barcodes.firstOrNull()?.rawValue?.let { onResult(it) } }
             .addOnCompleteListener { imageProxy.close() }
     } ?: imageProxy.close()
+}
+
+private fun playSuccessBeep() {
+    try {
+        val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+        toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+    } catch (e: Exception) {
+        Log.e("BEEP_ERROR", "Erro ao emitir som de bip", e)
+    }
 }
