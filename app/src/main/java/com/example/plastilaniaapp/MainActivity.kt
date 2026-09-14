@@ -1,6 +1,7 @@
 package com.example.plastilaniaapp
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.ToneGenerator
@@ -60,12 +61,14 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Factory
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Visibility
@@ -126,23 +129,92 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
+object ApiConfigManager {
+    private const val PREFS_NAME = "plastilania_prefs"
+    private const val KEY_API_IP = "api_ip"
+    private const val KEY_API_PORTA = "api_porta"
+
+    fun getApiIp(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_API_IP, "192.168.1.48") ?: "192.168.1.48"
+    }
+
+    fun setApiIp(context: Context, ip: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_API_IP, ip).apply()
+    }
+
+    fun getApiPorta(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_API_PORTA, "5555") ?: "5555"
+    }
+
+    fun setApiPorta(context: Context, porta: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_API_PORTA, porta).apply()
+    }
+
+    fun getBaseUrl(context: Context): String {
+        var ip = getApiIp(context).trim()
+        val porta = getApiPorta(context).trim()
+
+        if (ip.isBlank()) ip = "192.168.1.48"
+
+        if (!ip.startsWith("http://") && !ip.startsWith("https://")) {
+            ip = "http://$ip"
+        }
+        ip = ip.trimEnd('/')
+
+        return if (porta.isNotBlank()) {
+            "$ip:$porta/"
+        } else {
+            "$ip/"
+        }
+    }
+}
+
+object PasswordManager {
+    private const val PREFS_NAME = "plastilania_prefs"
+    private const val KEY_SENHA_PRODUCAO = "senha_producao"
+    private const val KEY_SENHA_TRANSFERENCIA = "senha_transferencia"
+
+    fun getSenhaProducao(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SENHA_PRODUCAO, "4321") ?: "4321"
+    }
+
+    fun setSenhaProducao(context: Context, novaSenha: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_SENHA_PRODUCAO, novaSenha).apply()
+    }
+
+    fun getSenhaTransferencia(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SENHA_TRANSFERENCIA, "1234") ?: "1234"
+    }
+
+    fun setSenhaTransferencia(context: Context, novaSenha: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_SENHA_TRANSFERENCIA, novaSenha).apply()
+    }
+}
+
+enum class ConfigTarget { SENHAS, API }
+
 enum class OperacaoMode(
     val title: String,
-    val senha: String,
     val primaryColor: Color,
     val lightColor: Color,
     val icon: ImageVector
 ) {
     PRODUCAO(
         title = "PRODUÇÃO",
-        senha = "123",
         primaryColor = Color(0xFF2E7D32),
         lightColor = Color(0xFFE8F5E9),
         icon = Icons.Default.Factory
     ),
     TRANSFERENCIA(
         title = "TRANSFERÊNCIA",
-        senha = "123",
         primaryColor = Color(0xFF1565C0),
         lightColor = Color(0xFFE3F2FD),
         icon = Icons.Default.SwapHoriz
@@ -297,7 +369,7 @@ fun MainScreen() {
                 isLoading = true
                 coroutineScope.launch {
                     try {
-                        val api = ApiService.create()
+                        val api = ApiService.create(context)
                         val dataAtual = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                         
                         val baseRequest = MovimentacaoRequest(
@@ -391,7 +463,7 @@ fun MainScreen() {
                             isScanning = false
                         }
                     } else {
-                        invalidScanMessage = "A etiqueta lida não é válida."
+                        invalidScanMessage = "Etiqueta Inválida."
                         isScanning = false
                     }
                 }
@@ -439,7 +511,7 @@ fun MainScreen() {
                 if (produto != "AGUARDANDO LEITURA") {
                     isEditingQuantity = true
                 } else {
-                    Toast.makeText(context, "Leia um produto primeiro!", Toast.LENGTH_SHORT).show()
+                    invalidScanMessage = "Por favor, leia uma etiqueta primeiro antes de editar a quantidade."
                 }
             },
             onDestinoChange = { novoDestino ->
@@ -451,9 +523,9 @@ fun MainScreen() {
             onConfirm = {
                 val qty = quantidade.toIntOrNull() ?: 0
                 if (produto == "AGUARDANDO LEITURA") {
-                    Toast.makeText(context, "Aguardando leitura do produto", Toast.LENGTH_SHORT).show()
+                    invalidScanMessage = "Por favor, leia uma etiqueta primeiro antes de confirmar."
                 } else if (qty <= 0) {
-                    Toast.makeText(context, "Quantidade deve ser maior que 0", Toast.LENGTH_SHORT).show()
+                    invalidScanMessage = "A quantidade deve ser maior que zero."
                 } else {
                     isConfirming = true
                 }
@@ -469,6 +541,10 @@ fun ModeSelectionScreen(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     var pendingMode by remember { mutableStateOf<OperacaoMode?>(null) }
+    var configTarget by remember { mutableStateOf(ConfigTarget.SENHAS) }
+    var showMasterDialog by remember { mutableStateOf(false) }
+    var showConfigSenhasDialog by remember { mutableStateOf(false) }
+    var showConfigApiDialog by remember { mutableStateOf(false) }
 
     if (pendingMode != null) {
         PasswordDialog(
@@ -482,18 +558,45 @@ fun ModeSelectionScreen(
         )
     }
 
+    if (showMasterDialog) {
+        MasterPasswordDialog(
+            onDismiss = { showMasterDialog = false },
+            onSuccess = {
+                showMasterDialog = false
+                if (configTarget == ConfigTarget.SENHAS) {
+                    showConfigSenhasDialog = true
+                } else {
+                    showConfigApiDialog = true
+                }
+            }
+        )
+    }
+
+    if (showConfigSenhasDialog) {
+        ConfigurarSenhasDialog(
+            onDismiss = { showConfigSenhasDialog = false }
+        )
+    }
+
+    if (showConfigApiDialog) {
+        ConfigurarApiDialog(
+            onDismiss = { showConfigApiDialog = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFFF0F7FF), Color(0xFFDDEBFF))))
             .systemBarsPadding()
     ) {
-        HeaderSection(onExitApp = { activity?.finish() })
+        HeaderSection()
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -514,20 +617,20 @@ fun ModeSelectionScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
 
             // Primeiro: PRODUÇÃO
             ModeOptionCard(
                 title = "PRODUÇÃO",
                 description = "Entrada de produção na Matriz",
-                tagline = "Origem: Matriz",
+                tagline = "Destino: Matriz",
                 primaryColor = OperacaoMode.PRODUCAO.primaryColor,
                 lightColor = OperacaoMode.PRODUCAO.lightColor,
                 icon = OperacaoMode.PRODUCAO.icon,
                 onClick = { pendingMode = OperacaoMode.PRODUCAO }
             )
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
 
             // Segundo: TRANSFERÊNCIA
             ModeOptionCard(
@@ -540,14 +643,78 @@ fun ModeSelectionScreen(
                 onClick = { pendingMode = OperacaoMode.TRANSFERENCIA }
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
+
+            // Botões de Configuração (Senhas e API)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        configTarget = ConfigTarget.SENHAS
+                        showMasterDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE3F2FD),
+                        contentColor = Color(0xFF0D47A1)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFBBDEFB))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "CONFIGURAR SENHAS",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        configTarget = ConfigTarget.API
+                        showMasterDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE3F2FD),
+                        contentColor = Color(0xFF0D47A1)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFBBDEFB))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dns,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "CONFIGURAR API",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             // Botão Sair do Sistema
             Button(
                 onClick = { activity?.finish() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(50.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFFFEBEE),
                     contentColor = Color(0xFFD32F2F)
@@ -563,7 +730,7 @@ fun ModeSelectionScreen(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = "SAIR DO SISTEMA",
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -650,9 +817,16 @@ fun PasswordDialog(
     onDismiss: () -> Unit,
     onSuccess: () -> Unit
 ) {
+    val context = LocalContext.current
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isError by remember { mutableStateOf(false) }
+
+    val expectedPassword = if (mode == OperacaoMode.PRODUCAO) {
+        PasswordManager.getSenhaProducao(context)
+    } else {
+        PasswordManager.getSenhaTransferencia(context)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -717,7 +891,7 @@ fun PasswordDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (password == mode.senha) {
+                    if (password == expectedPassword) {
                         onSuccess()
                     } else {
                         isError = true
@@ -738,7 +912,320 @@ fun PasswordDialog(
 }
 
 @Composable
+fun MasterPasswordDialog(
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = Color(0xFF0D47A1),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Acesso Restrito",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0D47A1)
+                )
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Digite a senha Master Keysystems para configurar as senhas:",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        isError = false
+                    },
+                    label = { Text("Senha Master") },
+                    singleLine = true,
+                    isError = isError,
+                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (isPasswordVisible) "Ocultar senha" else "Mostrar senha"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                if (isError) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Senha Master incorreta!",
+                        color = Color(0xFFD32F2F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (password == "5420") {
+                        onSuccess()
+                    } else {
+                        isError = true
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+            ) {
+                Text("AVANÇAR", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCELAR", color = Color.Gray)
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
+fun ConfigurarSenhasDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var senhaProducao by remember { mutableStateOf(PasswordManager.getSenhaProducao(context)) }
+    var senhaTransferencia by remember { mutableStateOf(PasswordManager.getSenhaTransferencia(context)) }
+    var isProdVisible by remember { mutableStateOf(false) }
+    var isTransfVisible by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = Color(0xFF0D47A1),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Configurar Senhas",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0D47A1)
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Defina as novas senhas de acesso:",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                
+                OutlinedTextField(
+                    value = senhaProducao,
+                    onValueChange = { senhaProducao = it },
+                    label = { Text("Senha - PRODUÇÃO") },
+                    singleLine = true,
+                    visualTransformation = if (isProdVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { isProdVisible = !isProdVisible }) {
+                            Icon(
+                                imageVector = if (isProdVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                OutlinedTextField(
+                    value = senhaTransferencia,
+                    onValueChange = { senhaTransferencia = it },
+                    label = { Text("Senha - TRANSFERÊNCIA") },
+                    singleLine = true,
+                    visualTransformation = if (isTransfVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { isTransfVisible = !isTransfVisible }) {
+                            Icon(
+                                imageVector = if (isTransfVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (senhaProducao.isBlank() || senhaTransferencia.isBlank()) {
+                        Toast.makeText(context, "As senhas não podem ser vazias!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        PasswordManager.setSenhaProducao(context, senhaProducao.trim())
+                        PasswordManager.setSenhaTransferencia(context, senhaTransferencia.trim())
+                        Toast.makeText(context, "Senhas alteradas com sucesso!", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+            ) {
+                Text("SALVAR", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCELAR", color = Color.Gray)
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
+fun ConfigurarApiDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var ip by remember { mutableStateOf(ApiConfigManager.getApiIp(context)) }
+    var porta by remember { mutableStateOf(ApiConfigManager.getApiPorta(context)) }
+
+    val formattedPreview = remember(ip, porta) {
+        var tempIp = ip.trim()
+        if (tempIp.isBlank()) tempIp = "192.168.1.48"
+        if (!tempIp.startsWith("http://") && !tempIp.startsWith("https://")) {
+            tempIp = "http://$tempIp"
+        }
+        tempIp = tempIp.trimEnd('/')
+        val tempPorta = porta.trim()
+        if (tempPorta.isNotBlank()) "$tempIp:$tempPorta/" else "$tempIp/"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Dns,
+                    contentDescription = null,
+                    tint = Color(0xFF0D47A1),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Configurar API / Servidor",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0D47A1)
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Defina o IP e a Porta do servidor de API:",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+                
+                OutlinedTextField(
+                    value = ip,
+                    onValueChange = { ip = it },
+                    label = { Text("Endereço IP ou Servidor") },
+                    placeholder = { Text("Ex: 192.168.1.48") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                OutlinedTextField(
+                    value = porta,
+                    onValueChange = { porta = it },
+                    label = { Text("Porta") },
+                    placeholder = { Text("Ex: 5555") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE3F2FD), RoundedCornerShape(6.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "URL Resultante:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1565C0)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = formattedPreview,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0D47A1)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (ip.isBlank()) {
+                        Toast.makeText(context, "O IP do servidor não pode ser vazio!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        ApiConfigManager.setApiIp(context, ip.trim())
+                        ApiConfigManager.setApiPorta(context, porta.trim())
+                        Toast.makeText(context, "Configurações de API salvas!", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+            ) {
+                Text("SALVAR", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCELAR", color = Color.Gray)
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
 fun InvalidScanDialog(
+    title: String = "Atenção!",
     message: String,
     onDismiss: () -> Unit
 ) {
@@ -754,7 +1241,7 @@ fun InvalidScanDialog(
         },
         title = {
             Text(
-                text = "Etiqueta Inválida!",
+                text = title,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 color = Color(0xFFB71C1C),

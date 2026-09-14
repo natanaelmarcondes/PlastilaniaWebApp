@@ -1,5 +1,6 @@
 package com.example.plastilaniaapp
 
+import android.content.Context
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
@@ -26,11 +27,22 @@ interface ApiService {
     suspend fun registrarEntrada(@Body request: MovimentacaoRequest): Response<Unit>
 
     companion object {
-        private const val BASE_URL = "http://192.168.1.48:5555/"
+        fun create(baseUrl: String): ApiService {
+            val formattedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            return Retrofit.Builder()
+                .baseUrl(formattedUrl)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(ApiService::class.java)
+        }
+
+        fun create(context: Context): ApiService {
+            return create(ApiConfigManager.getBaseUrl(context))
+        }
 
         fun create(): ApiService {
             return Retrofit.Builder()
-                .baseUrl(BASE_URL)
+                .baseUrl("http://192.168.1.48:5555/")
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
                 .create(ApiService::class.java)
